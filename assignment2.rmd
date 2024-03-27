@@ -1,1 +1,630 @@
+---
+title: '**Spatial Economics -- Assignment 1**'
+author: 
+  - "Max Heinze (h11742049@s.wu.ac.at)"
+  - "Kevin Kain (h12232066@s.wu.ac.at)"
+  - "Jaime Miravet (h12235992@s.wu.ac.at)"
+date: "April 12, 2024"
+output: 
+  pdf_document:
+    toc: true
+    includes:
+      in_header: !expr file.path(rprojroot::find_rstudio_root_file(), "helper", "wrap_code.tex")
+header-includes: 
+  - \usepackage{tcolorbox}
+  - \usepackage[default]{lato}
+papersize: a4
+geometry: margin = 2cm
+urlcolor: DarkOrchid!65!black
+---
 
+```{r, setup, include = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 80), tidy = TRUE)
+```
+
+\vspace{2em}
+
+\begin{tcolorbox}
+\centering \itshape The executable code that was used in compiling the assignment is available on GitHub at \url{https://github.com/maxmheinze/spatial}.
+\end{tcolorbox}
+
+\newpage
+
+# Task A
+
+## Preliminaries
+
+First, we load the `MASS` package and check what variables there are in the `Boston` dataset.
+
+```{r, echo = TRUE, results = "hide"}
+# Header ------------------------------------------------------------------
+
+rm(list = ls())
+gc()
+
+pacman::p_load(MASS)
+
+# Check Column Names ------------------------------------------------------
+
+colnames(Boston)
+```
+
+## Creating the Function
+
+Next, we create the desired function.
+
+```{r, echo = TRUE}
+# Create the function -----------------------------------------------------
+
+boston_quick_ols <- function(dependent, ...) {
+  
+  # Create a formula string from the inputs
+  independents <- paste(c(...), collapse = " + ")
+  formula_string <- paste(dependent, "~", independents)
+  
+  # Fit the model 
+  fitted_model <- lm(as.formula(formula_string), data = Boston)
+  
+  # Get the summary
+  fitted_model_summary <- summary(fitted_model)
+  
+  # Get point estimates and confidence intervals
+  list_coef <- fitted_model_summary$coefficients
+  list_conf <- confint(fitted_model, level = 0.95)
+  list_ervr <- fitted_model_summary$sigma^2
+  
+  # Output a list
+  return(list(
+    coefficients = list_coef[,1],
+    error_variance = list_ervr,
+    test_statistic_t = list_coef[,3],
+    test_statistic_p = list_coef[,4],
+    confidence_intervals = list_conf
+  ))
+  
+}
+```
+
+## A Simple Linear Model
+
+Next, we apply the function, using a collection of four independent variables.
+
+```{r, out.width = "50%", fig.align = "center"}
+boston_quick_ols("medv", "rm", "age", "dis", "nox")
+```
+
+# Task B
+
+## Creating a Graph and an Adjacency Matrix
+
+We chose the network of all first-district Vienna subway stations. The graph and the adjacency matrix can be found below. Nodes represent individual stations, and edges represent direct subway connections between two stations, without passing another station or changing to another line. We abstract from the existence of different subway lines and from the existence of other stations outside the first district as well as links to these stations. The two-character node labels are to be read as follows: ST is Schottentor, SR is Schottenring, SE is Schwedenplatz, LS is Landstraße, SK is Stadtpark, KP is Karlsplatz, SU is Stubentor, SP is Stephansplatz, HG is Herrengasse, and VT is Volkstheater.
+
+```{r, out.width = "60%", fig.align='center'}
+# Header ------------------------------------------------------------------
+pacman::p_load(igraph,
+               extrafont)
+
+
+# Create Matrix -----------------------------------------------------------
+
+# Create the adjacency matrix
+adj_matrix <- matrix(c(
+  0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+  1, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+  0, 1, 0, 1, 0, 0, 0, 1, 0, 0,
+  0, 0, 1, 0, 1, 0, 1, 0, 0, 0,
+  0, 0, 0, 1, 0, 1, 0, 0, 0, 0,
+  0, 0, 0, 0, 1, 0, 0, 1, 0, 0,
+  0, 0, 0, 1, 0, 0, 0, 1, 0, 0,
+  0, 0, 1, 0, 0, 1, 1, 0, 1, 0,
+  0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 0
+), nrow = 10, byrow = TRUE)
+
+# Define node names
+node_names <- c("ST", "SR", "SE", "LS", "SK", "KP", "SU", "SP", "HG", "VT")
+dimnames(adj_matrix) <- list(node_names, node_names)
+
+coords_matrix <- matrix(
+  c(
+    0,   0,
+    3.5,  -1.5,
+    5,    -5,
+    3.5,  -8.5,
+    0,    -10,
+    -3.5, -8.5,
+    1.75, -6.75,
+    0,    -5,
+    -2.5, -5,
+    -5,   -5
+  ), 
+  ncol = 2, byrow = TRUE)
+
+
+# Create graph ------------------------------------------------------------
+
+graph_1 <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected")
+
+
+# Output ------------------------------------------------------------------
+
+plot(graph_1,
+     layout = coords_matrix,
+     vertex.size = 30, 
+     vertex.color = "#BBBBBB",
+     vertex.label.cex = 1.2, 
+     vertex.label.font = 2, 
+     vertex.label.family = "Lato",
+     vertex.label.color = "black",
+     edge.color = "black",
+     edge.width = 2) 
+
+knitr::kable(adj_matrix)
+```
+
+## Centrality
+
+Our graph is undirected, and thus the simplest notion of centrality that we can investigate is the nodes' **degree**. We can compute the degree by simply calculating the row sums of the adjacency matrix. The result, given in the table below, is that Stephansplatz is the most central station, having 4 links, and Volkstheater and Schottentor are the least central stations, having one link each.
+
+```{r, out.width = "50%", fig.align = "center"}
+knitr::kable(rowSums(adj_matrix), col.names = c("degree centrality"))
+```
+
+Alternatively, we can calculate the nodes' **Eigenvector centrality**. Eigenvector centrality is a centrality measure that takes into account how influential (central) the nodes bordering some node are, where being connected to a more influential node is “rewarded” with a higher centrality measure. To describe the notion mathematically, let $N$ be the set of nodes in the graph from above, and let $H(n)$ be the set of neighbors of some node $n$ ($H$ in this case stands for the *hood*). Let now $i$ and $j$ be two nodes that are in $N$. We can define a centrality measure $c_n$ such that
+
+$$
+c_i^{\text{eigenvector}} = \alpha \sum_{j \in H(i)} c_j = \alpha \sum_{j\in N} a_{i,j} c_j,
+$$
+where $a_{i,j}$ is an element of the adjacency matrix and $\alpha$ is some constant. The latter equality follows quite straightforwardly from the fact that $a_{i,j}=0$ if $j\notin H(i)$ and $a_{i,j}=1$ if $j\in H(i)$, i.e., the definition of the adjacency matrix. If we now let $\alpha = \tfrac{1}{\lambda}$, this can be written as
+
+$$
+\boldsymbol{Ac} = \lambda\boldsymbol{c},
+$$
+
+which means that $\boldsymbol{c}$ is an eigenvector of $\boldsymbol{A}$ corresponding to eigenvalue $\lambda$. It follows from the Perron–Frobenius Theorem that there is exactly one (except multiples of itself) eigenvector with all non-negative entries (which is what we desire for the centrality measure) and that it corresponds to the largest of the eigenvalues. Conveniently, the `igraph` package has a function that does the calculations for us. We get the following centrality measures:
+
+```{r, out.width = "50%", fig.align = "center"}
+eigen_centrality(
+  graph_1,
+  directed = FALSE,
+  scale = TRUE,
+  weights = NULL,
+  options = arpack_defaults()
+) %>%
+  `$`(vector) %>%
+  knitr::kable(col.names = "eigenvector centrality")
+```
+
+Again, Stephansplatz is the most central station. Schottentor is now the uniquely least central station.
+
+There exist extensions and variations of eigenvector centrality, such as PageRank centrality, but there are also other approaches. One of these other approaches is the notion of **closeness centrality**, a concept where having shorter average shortest path lengths to all other nodes is rewarded. It is defined as
+
+$$
+c_i^{\text{closeness}} = \frac{N-1}{\sum_{j\in N,j\neq i}d(i,j)},
+$$
+where $d(\cdot)$ refers to the length of the shortest average path. Again, we are happy to use the implementation the `igraph` package provides to calculate closeness centrality of our stations.
+
+```{r, out.width = "50%", fig.align = "center"}
+knitr::kable(closeness(graph_1), col.names = "closeness centrality")
+```
+
+Surprise, surprise: Stephansplatz is the most central station and Schottentor is the least central station.
+
+### Centrality in a Row-Normalized Network
+
+Row-normalizing means that we divide every element in our adjacency matrix by the corresponding row sum. If we do this, we can see that our adjacency matrix is no longer symmetric:
+
+```{r, out.width = "50%", fig.align = "center"}
+adj_matrix_2 <- adj_matrix / rowSums(adj_matrix)
+
+knitr::kable(round(adj_matrix_2,2))
+```
+
+This means that we can no longer treat our network as an undirected graph, since in-connections and out-connections are differently weighted.
+
+Regarding **degree centrality**, we therefore have to split up our measure into **in-degree** and **out-degree** centrality. Since we normalized row sums, i.e., the sum of outward connections of a node, the out-degree is a somewhat useless measure, since calculating it will always return unity by definition. Calculating the in-degree, however, yields a result:
+
+```{r, out.width = "50%", fig.align = "center"}
+knitr::kable(colSums(adj_matrix_2), col.names = c("in-degree centrality"))
+```
+
+A high measure can be interpreted as a station being relatively important for its neighbor stations. If a station has only one neighbor station, and that neighbor station has another station that it neighbors, the first station will have a measure of 0.5. In our example, Stephansplatz is the most central station and Schottentor and Volkstheater are the least central stations.
+
+So, we get the same most and least central stations as in the original degree centrality case. Will that always be the case that stations that are more central in the one measure are also more central in the other? No. For a smooth disproof by counterexample, look at nodes SR and SE.
+
+Our measure of **eigenvector centrality** is affected in so far as that in the original formula,
+
+$$
+c_i^{\text{eigenvector}} =\alpha \sum_{j\in N} a_{i,j} c_j,
+$$
+
+$a_{i,j}$ can now assume values between 0 and 1 instead of _just_ 0 and 1. Every value that was 0 before is still 0, but all connections that do exist are now weighted by how many other outgoing connections from a station there are. This makes for a slightly different eigenvector: 
+
+
+```{r, out.width = "50%", fig.align = "center"}
+adj_matrix_2 <- adj_matrix / rowSums(adj_matrix)
+
+graph_2 <- graph_from_adjacency_matrix(adj_matrix_2, mode = "directed", weighted = TRUE)
+
+
+
+eigen_centrality(
+  graph_2,
+  directed = FALSE,
+  scale = TRUE,
+  weights = NULL,
+  options = arpack_defaults()
+) %>%
+  `$`(vector) %>%
+  knitr::kable(col.names = "eigenvector centrality")
+```
+
+For our measure of **closeness centrality**, we need a definition of “distance” in a weighted graph. Conventionally, weights are in this case interpreted as the “length” of a node, meaning that a low-weighted connection is related to the notion of two nodes being “closer,” and that the distance equals the sum of weights along a path. Since weights *from* a station that has many outgoing connections will be lower (even if incoming connections' weights need not be), having many outgoing connections is rewarded using this measure of centrality with a row-normalized adjacency matrix. We can also see that Stephansplatz gains relatively more compared to the original closeness measure:
+
+```{r, out.width = "50%", fig.align = "center"}
+
+knitr::kable(closeness(graph_2), col.names = "closeness centrality")
+```
+
+### Removing a node
+
+We remove Stubentor because it might be interesting to see what happens if we remove one of Stephansplatz's connections. Let's see:
+
+```{r, out.width = "60%", fig.align='center'}
+# Header ------------------------------------------------------------------
+pacman::p_load(igraph,
+               extrafont)
+
+
+# Create Matrix -----------------------------------------------------------
+
+# Create the adjacency matrix
+adj_matrix_3 <- matrix(c(
+  0, 1, 0, 0, 0, 0, 0, 0, 0,
+  1, 0, 1, 0, 0, 0, 0, 0, 0,
+  0, 1, 0, 1, 0, 0, 1, 0, 0,
+  0, 0, 1, 0, 1, 0, 0, 0, 0,
+  0, 0, 0, 1, 0, 1, 0, 0, 0,
+  0, 0, 0, 0, 1, 0, 1, 0, 0,
+  0, 0, 1, 0, 0, 1, 0, 1, 0,
+  0, 0, 0, 0, 0, 0, 1, 0, 1,
+  0, 0, 0, 0, 0, 0, 0, 1, 0
+), nrow = 9, byrow = TRUE)
+
+# Define node names
+node_names_3 <- c("ST", "SR", "SE", "LS", "SK", "KP", "SP", "HG", "VT")
+dimnames(adj_matrix_3) <- list(node_names_3, node_names_3)
+
+coords_matrix_3 <- matrix(
+  c(
+    0,   0,
+    3.5,  -1.5,
+    5,    -5,
+    3.5,  -8.5,
+    0,    -10,
+    -3.5, -8.5,
+    0,    -5,
+    -2.5, -5,
+    -5,   -5
+  ), 
+  ncol = 2, byrow = TRUE)
+
+
+# Create graph ------------------------------------------------------------
+
+graph_3 <- graph_from_adjacency_matrix(adj_matrix_3, mode = "undirected")
+
+
+# Output ------------------------------------------------------------------
+
+plot(graph_3,
+     layout = coords_matrix_3,
+     vertex.size = 30, 
+     vertex.color = "#BBBBBB",
+     vertex.label.cex = 1.2, 
+     vertex.label.font = 2, 
+     vertex.label.family = "Lato",
+     vertex.label.color = "black",
+     edge.color = "black",
+     edge.width = 2) 
+
+knitr::kable(adj_matrix_3)
+
+knitr::kable(rowSums(adj_matrix_3), col.names = c("degree centrality"))
+
+eigen_centrality(
+  graph_3,
+  directed = FALSE,
+  scale = TRUE,
+  weights = NULL,
+  options = arpack_defaults()
+) %>%
+  `$`(vector) %>%
+  knitr::kable(col.names = "eigenvector centrality")
+
+knitr::kable(closeness(graph_3), col.names = "closeness centrality")
+```
+
+We can see that Stephansplatz suffers and is now exactly as central as Schwedenplatz. Also, there is no longer a difference between Schottentor and Volkstheater as least central stations using any measure of centrality. This makes intuitive sense since the new graph is now symmetrically consisting of a central “circle” and two “appendices” of length two. 
+
+## Simulation
+
+We say that the coolness factor $\boldsymbol{x}$ is a characteristic of each station. Some stations are cooler and some are less cool. We also assume that coolness $\boldsymbol{x}$ affects the crime rate $\boldsymbol{y}$ at a station. However, crime rates at stations are also influenced by neighboring stations' crime rates and coolness factors, in the style of a linear-in-means model:
+
+$$
+ \boldsymbol{y} = \boldsymbol{x}\beta + \boldsymbol{Wx}\gamma + \lambda\boldsymbol{Wy} + \boldsymbol{\varepsilon},
+$$
+
+where $\boldsymbol{\varepsilon} \sim \mathbf{N}(\boldsymbol{0}, \boldsymbol{I}\sigma^2)$. Letting $\boldsymbol{S} = (\boldsymbol{I}-\lambda\boldsymbol{W})$, this becomes
+
+$$
+ \boldsymbol{Sy} = \boldsymbol{x}\beta + \boldsymbol{Wx}\gamma + \boldsymbol{\varepsilon},
+$$
+
+which we can simulate as shown in the following. For the simulation, we let $\beta=-1$ (cooler stations have less crime), $\gamma = 1$, $\lambda = 0.65$, and $\sigma^2 = 1$. 
+
+```{r, out.width = "50%", fig.align = "center"}
+set.seed(1234)
+
+# Set parameters
+N <- length(node_names)
+beta <- -1
+gamma <-  1
+lambda <- 0.65
+sigmasquared <- 1
+
+
+reps <- 1000
+estims <- vector("numeric", reps) 
+
+for (i in 1:reps) {
+  
+  # Create the coolness vector
+  x <- rnorm(length(node_names))
+  names(x) <- node_names
+  
+  # Rename the adj. matrix W
+  W <- adj_matrix_2
+  
+  errs <- rnorm(N, 0, sigmasquared)
+  
+  Wx <- W %*% x
+  
+  # Calculate S = (I - \lambda W)
+  S = diag(N) - lambda * W
+  
+  # Solve for y (the crime variable)
+  y = solve(S, Wx * gamma + x * beta + errs)
+  
+  # Fit a linear model
+  model_1 <- lm(y ~ x)
+  
+  # Store fitted estimates
+  estims[i] <- coef(model_1)["x"]
+} 
+```
+
+We then fit the following linear model 
+
+$$
+ \boldsymbol{y} = \boldsymbol{x}\beta + \boldsymbol{\varepsilon},
+$$
+
+and store the coefficients for $\beta$. 
+
+```{r, out.width = "50%", fig.align = "center"}
+avg_estimate <- mean(estims)
+print(avg_estimate)
+```
+
+The average $\beta$ coefficient of 1,000 simulations was `r avg_estimate`, and we conclude the estimate is downward biased in magnitude, since the true value of $\beta$ was --1.
+
+
+# Task C
+
+## Preliminaries
+
+We load the relevant packages for manipulating spatial data.
+
+```{r, out.width = "50%", fig.align = "center"}
+pacman::p_load(
+  dplyr,
+  ggplot2,
+  sf,
+  data.table,
+  readr,
+  eurostat,
+  RColorBrewer,
+  viridis
+)
+```
+
+
+We download a shapefile for NUTS2 region and a dataset that includes fertility rates at the same regional level. 
+```{r, out.width = "50%", fig.align = "center"}
+temp <- tempfile(fileext = ".zip")
+
+download.file("http://ec.europa.eu/eurostat/cache/GISCO/distribution/v2/nuts/download/ref-nuts-2021-03m.shp.zip", temp)
+
+outDir <- "./data"
+unzip(temp, exdir=outDir)
+unzip("./data/NUTS_RG_03M_2021_4326_LEVL_2.shp.zip", exdir=outDir)
+
+#Data of interest at NUTS 2 level (Regional fertility rate)
+EurostatTOC <- get_eurostat_toc()
+df1 <- get_eurostat("tgs00100", time_format = "raw")
+```
+
+
+## Shapefile CRS
+Now we read the shapefile and find out which Coordinate Reference System (CRS) it uses.
+```{r, out.width = "50%", fig.align = "center"}
+shp1 <- st_read(dsn = "./data", layer ="NUTS_RG_03M_2021_4326_LEVL_2") 
+
+#Find out CRS of the shapefile
+CRS <- st_crs(shp1)
+print(CRS)
+```
+
+We observe that the shapefile uses a projection WGS 84 (EPSG 4326).
+
+Now we apply a new CRS to the shapefile (EPSG 3752) and remove remote regions so that the projection looks less distorted.
+```{r, out.width = "50%", fig.align = "center"}
+#Change CRS to EPSG 3752
+shp1 <- st_transform(shp1, 
+                     st_crs(3752))
+#Remove overseas regions
+overseas <- c("FRY1", "FRY2", "FRY3", "FRY4", "FRY5", "FRZZ", 
+              "PT20", "PT30", "PTZZ", 
+              "ES70", "ESZZ", 
+              "NO0B", "NOZZ")
+shp1 <- shp1[! shp1$NUTS_ID %in% overseas, ]
+```
+
+## Merging the Shapefile and Creating Two Visualizations
+
+First, we merge the shapefile with the fertility rates dataset. To create the visualizations, we select the fertility rates observations of 2019.
+```{r, out.width = "50%", fig.align = "center"}
+df1 <- df1[df1$TIME_PERIOD == 2019, ]
+
+df1 <- df1[!df1$geo %in% overseas,]
+
+merged_shp1 <- left_join(shp1, df1, by=c("NUTS_ID"="geo"))
+```
+
+Now we create the first visualization using a continuous scale.
+```{r, out.width = "50%", fig.align = "center"}
+#Visualization 1 - Continious scale
+
+ggplot() +
+  geom_sf(data = merged_shp1, aes(fill = values)) +
+  scale_fill_continuous(name = "Fertility Rate") +
+  labs(title = "Fertility Rate by Region") +
+  theme_minimal()
+```
+
+For the second visualization, we use a discrete scale with 5 levels. To do that, we cut the values of fertility rate into five segments.
+```{r, out.width = "50%", fig.align = "center"}
+#Visualization 2 - Discrete scale
+  
+#We cut the values of fertility rate into 5 segments
+ merged_shp1$value_cat <- cut_to_classes(merged_shp1$values, n = 5)
+  
+  
+colors <- viridis(5)
+color_na <- ""
+ggplot() +
+geom_sf(data = merged_shp1, aes(fill = ifelse(is.na(value_cat), "No Data", as.character(value_cat)))) +  
+scale_fill_manual(name = "Fertility Rate", values = c(color_na, colors), 
+                      breaks = c("No Data", levels(factor(merged_shp1$value_cat)))) +  
+labs(title = "Fertility Rate by Region") +
+theme_minimal()
+```  
+
+## Different Ways to Store Visualizations
+
+The two main ways to store visualizations are raster graphics and vector graphics. Raster graphics store images as a grid of pixels, where each pixel contains color information. This format is more appropriate for images that contain a high level of detail, with a wide variety of colors and precise shading. On the other hand, vector graphics store images using mathematical equations to define shapes and lines. This storage method is more appropriate for images with less variety of colors and less detail in shading. Since vector files do not use pixels, the images can be scaled without losing sharpness in the details of the shapes.
+
+Accordingly, to store the visualization that uses a continuous scale, it might be more convenient to use raster graphics, since they allow to better display the smooth color gradients. Conversely, to store the discrete-scale visualization, using vector graphics might be a better option since the image contains only solid colors with no smooth gradients. In this way, we could zoom in, rotate the map, or manipulate it in any way without losing any image quality. 
+
+We save the first visualization (continuous scale) in a PNG format, which is a raster format. JPEG would be another option. The second visualization (discrete scale) is saved in a PDF format, which uses vector graphics. SVG would be another option here.
+
+```{r, out.width = "50%", fig.align = "center"}
+#ggsave("visualization_1.png", plot = p, device = "png")
+#ggsave("visualization_2.pdf", plot = p, device = "pdf")
+```
+
+
+# Task D
+
+## Preliminaries 
+
+```{r, out.width = "50%", fig.align = "center"}
+# install required packages
+#install.packages("tmap", repos = "https://r-tmap.github.io/tmap/", type = "source")
+#install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
+
+
+# load the tmap and pDataLarge packages
+pacman::p_load(
+"tmap",
+"spDataLarge",
+"ggplot2",
+"spatstat",
+"spatialreg",
+"spgwr",
+"spdep",
+"adehabitatHR",
+"googleway",
+"gmapsdistance",
+"leaflet",
+"dismo",
+"raster",
+"sp",
+"leaflet",
+"tmap",
+"foreign",
+"sf",
+"terra",
+"RColorBrewer",
+"stargazer",
+"rmapshaper",
+"hrbrthemes"
+)
+
+# load the dataset
+data("pol_pres15")
+
+```
+
+## Support for Komorowski and Duda
+
+The first choropleth basically represents the runoff results between Duda and Komorowski. As observed, Duda is dominant in southeast regions whereas Komorowski is dominant in northwest regions. The total vote share of Duda is 51.55 per cent whereas of that of Komorowski is 48.45 per cent.
+
+
+```{r, out.width = "50%", fig.align = "center"}
+# runoff results of komorowski and duda on choropleth
+tm_shape(pol_pres15) + 
+  tm_fill("II_Duda_share", palette = "RdYlGn", style = "equal", n = 2, alpha = 1, breaks = c(0, 0.49, 1), 
+          labels = c("Komoroski (48.45%)", "Duda(51.55%)")) + 
+  tm_borders(alpha = 0.5, col = "black") +
+  tm_compass() + 
+  tm_layout(title = "Runoff Round Results: Komorowski and Duda", 
+            legend.text.size = 1, legend.title.size = 0.01, 
+            legend.position = c("left", "bottom"), legend.title.color = "white", frame = FALSE)
+```
+
+The second choropleth basically depicts the percentage of vote share in each of the constituences. As the shade of the colour  gets lighter for red or green, the vote share for each candidate decreases or conversely for the opposite candidate increases. The colour shades for each candidate is divided into five intervals indicating a consitutency won by a candidate is possible only when it has votes more than 50 per cent or above.
+
+```{r, out.width = "50%", fig.align = "center"}
+# percentage of vote share by each candidate
+tm_shape(pol_pres15) + 
+  tm_fill("II_Duda_share", palette = "RdYlGn", style = "equal", n = 10, breaks = c(0, 0.49, 1), 
+          labels = c("Komoroski (91-100)","Komoroski (90-81)", "Komoroski (80-71)","Komoroski (70-61)","Komoroski (60-51)", "Duda (51-60)","Duda (61-70)","Duda (71-80)","Duda (81-90)","Duda (91-100)")) + 
+  tm_borders(alpha = 0.5, col = "black") + 
+  tm_compass() + 
+  tm_layout(title = "Percentage of Vote Share in Runoff Round", 
+            legend.text.size = 0.55, legend.title.size = 0.01, 
+            legend.position = c("left", "bottom"), legend.title.color = "white", frame = FALSE)
+
+```
+
+## Possible Issues With Postal Voting Envelopes
+
+The graph below depicts a high degree of correlation of Postal Voting Envelopes (PVE) and the high concentration wins for Komorowski (especially in the Warsaw region). This is evident from the clustering of the blue dots and whose size also directly correlated with the number of PVE used in those region.
+
+```{r}
+
+tm_shape(pol_pres15) + 
+  tm_fill("II_Duda_share", palette = "RdYlGn", style = "equal", n = 10, breaks = c(0, 0.49, 1), 
+          labels = c("Komorowski (90-100]","Komorowski (80-90]", "Komorowski (70-80]","Komorowski (60-70]","Komorowski (50-60]", "Duda (50-60]","Duda (60-70]","Duda (70-80]","Duda (80-90]","Duda (90-100]")) + 
+  tm_borders(alpha = 0.5, col = "black") + 
+  tm_dots("II_of_which_voting_papers_taken_from_voting_envelopes", 
+          col = "blue", 
+          shape = 19) +
+  tm_compass() + 
+  tm_layout(title = "Correlation of PVE and High Concentrated Wins for Komorowski",
+            legend.text.size = 0.40, legend.title.size = 0.01, 
+            legend.position = c("left", "bottom"), legend.title.color = "white", frame = FALSE)
+```
